@@ -22,6 +22,11 @@
 #include <vector>
 #include <unordered_map>
 
+struct BBoxStruct {
+	glm::vec3 min = glm::vec3(std::numeric_limits< float >::infinity());
+	glm::vec3 max = glm::vec3(-std::numeric_limits< float >::infinity());
+};
+
 struct Scene {
 	struct Transform {
 		//Transform names are useful for debugging and looking up locations in a loaded scene:
@@ -47,6 +52,8 @@ struct Scene {
 		Transform(Transform const &) = delete;
 		//if we delete some constructors, we need to let the compiler know that the default constructor is still okay:
 		Transform() = default;
+
+		BBoxStruct bbox;
 	};
 
 	struct Drawable {
@@ -56,6 +63,10 @@ struct Scene {
 
 		//Contains all the data needed to run the OpenGL pipeline:
 		struct Pipeline {
+			//Purely storage to pass bbox info the transform
+			glm::vec3 min = glm::vec3(0.0f);
+			glm::vec3 max = glm::vec3(0.0f);
+
 			GLuint program = 0; //shader program; passed to glUseProgram
 
 			//attributes:
