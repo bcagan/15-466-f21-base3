@@ -2,11 +2,13 @@
 
 #include "gl_compile_program.hpp"
 #include "gl_errors.hpp"
+#include <vector>
+#include "load_save_png.hpp"
 
 Scene::Drawable::Pipeline lit_color_texture_program_pipeline;
 
-Load< LitColorTextureProgram > lit_color_texture_program(LoadTagEarly, []() -> LitColorTextureProgram const * {
-	LitColorTextureProgram *ret = new LitColorTextureProgram();
+Load< LitColorTextureProgram > lit_color_texture_program(LoadTagEarly, []() -> LitColorTextureProgram const* {
+	LitColorTextureProgram* ret = new LitColorTextureProgram();
 
 	//----- build the pipeline template -----
 	lit_color_texture_program_pipeline.program = ret->program;
@@ -37,8 +39,32 @@ Load< LitColorTextureProgram > lit_color_texture_program(LoadTagEarly, []() -> L
 	glBindTexture(GL_TEXTURE_2D, 0);
 
 
+
+
+	std::string filename = std::string("sources/stary.png");
+	GLuint tex1;
+	glGenTextures(1, &tex1);
+	std::vector<glm::u8vec4> data;
+	int width = 192;
+	int height = 192;
+	glm::uvec2 size = glm::uvec2(width,height);
+	load_png(filename, &size, &data, UpperLeftOrigin);
+	if (data.size() > 0)
+	{
+		glBindTexture(GL_TEXTURE_2D, tex1);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data.data());
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glBindTexture(GL_TEXTURE_2D, 1);
+	}
+	else  throw std::runtime_error("Error loading texture");
+
 	lit_color_texture_program_pipeline.textures[0].texture = tex;
 	lit_color_texture_program_pipeline.textures[0].target = GL_TEXTURE_2D;
+	lit_color_texture_program_pipeline.textures[1].texture = tex1;
+	lit_color_texture_program_pipeline.textures[1].target = GL_TEXTURE_2D;
 
 	return ret;
 });

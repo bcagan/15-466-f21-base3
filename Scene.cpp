@@ -109,13 +109,6 @@ void Scene::draw(glm::mat4 const &world_to_clip, glm::mat4x3 const &world_to_lig
 		//Set attribute sources:
 		glBindVertexArray(pipeline.vao);
 
-		if (drawable.transform->name == std::string("Player") || drawable.transform->name 
-			== std::string("Goal") || (drawable.transform->name.size() > 3 
-				&& drawable.transform->name.substr(0,3) == std::string("Gem"))) { //Only change platform color
-			glUniform1f(glGetUniformLocation(pipeline.program, "t"), 0.0);
-		}
-		else glUniform1f(glGetUniformLocation(pipeline.program, "t"), t);
-
 		//Configure program uniforms:
 
 		//the object-to-world matrix is used in all three of these uniforms:
@@ -151,6 +144,22 @@ void Scene::draw(glm::mat4 const &world_to_clip, glm::mat4x3 const &world_to_lig
 				glActiveTexture(GL_TEXTURE0 + i);
 				glBindTexture(pipeline.textures[i].target, pipeline.textures[i].texture);
 			}
+		}
+
+
+		if (drawable.transform->name == std::string("Player") || drawable.transform->name
+			== std::string("Goal") || (drawable.transform->name.size() > 3
+				&& drawable.transform->name.substr(0, 3) == std::string("Gem"))) { //Only change platform color
+			glUniform1f(glGetUniformLocation(pipeline.program, "t"), 0.0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(pipeline.textures[0].target, pipeline.textures[0].texture);
+			glUniform1i(glGetUniformLocation(pipeline.program, "TEX"), 0);
+		}
+		else {
+			glUniform1f(glGetUniformLocation(pipeline.program, "t"), t);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(pipeline.textures[1].target, pipeline.textures[1].texture);
+			glUniform1i(glGetUniformLocation(pipeline.program, "TEX"), 1);
 		}
 
 		//draw the object:
