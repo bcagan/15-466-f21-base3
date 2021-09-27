@@ -101,12 +101,20 @@ void Scene::draw(glm::mat4 const &world_to_clip, glm::mat4x3 const &world_to_lig
 		//skip any drawables that don't contain any vertices:
 		if (pipeline.count == 0) continue;
 
+		if (!drawable.transform->doDraw) continue;
 
 		//Set shader program:
 		glUseProgram(pipeline.program);
 
 		//Set attribute sources:
 		glBindVertexArray(pipeline.vao);
+
+		if (drawable.transform->name == std::string("Player") || drawable.transform->name 
+			== std::string("Goal") || (drawable.transform->name.size() > 3 
+				&& drawable.transform->name.substr(0,3) == std::string("Gem"))) { //Only change platform color
+			glUniform1f(glGetUniformLocation(pipeline.program, "t"), 0.0);
+		}
+		else glUniform1f(glGetUniformLocation(pipeline.program, "t"), t);
 
 		//Configure program uniforms:
 

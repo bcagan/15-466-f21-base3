@@ -66,7 +66,7 @@ LitColorTextureProgram::LitColorTextureProgram() {
 		"	color = Color;\n"
 		"	texCoord = TexCoord;\n"
 		"}\n"
-	,
+		,
 		//fragment shader:
 		"#version 330\n"
 		"uniform sampler2D TEX;\n"
@@ -75,6 +75,7 @@ LitColorTextureProgram::LitColorTextureProgram() {
 		"uniform vec3 LIGHT_DIRECTION;\n"
 		"uniform vec3 LIGHT_ENERGY;\n"
 		"uniform float LIGHT_CUTOFF;\n"
+		"uniform float t; \n"
 		"in vec3 position;\n"
 		"in vec3 normal;\n"
 		"in vec4 color;\n"
@@ -103,7 +104,8 @@ LitColorTextureProgram::LitColorTextureProgram() {
 		"		e = max(0.0, dot(n,-LIGHT_DIRECTION)) * LIGHT_ENERGY;\n"
 		"	}\n"
 		"	vec4 albedo = texture(TEX, texCoord) * color;\n"
-		"	fragColor = vec4(e*albedo.rgb, albedo.a);\n"
+		"	vec4 texColor = vec4(e*albedo.rgb, albedo.a);\n"
+		"	fragColor = vec4(1.0-t)*texColor + vec4(t)*(vec4(0.25,0.25,0.5,1.0));"
 		"}\n"
 	);
 	//As you can see above, adjacent strings in C/C++ are concatenated.
@@ -125,6 +127,7 @@ LitColorTextureProgram::LitColorTextureProgram() {
 	LIGHT_DIRECTION_vec3 = glGetUniformLocation(program, "LIGHT_DIRECTION");
 	LIGHT_ENERGY_vec3 = glGetUniformLocation(program, "LIGHT_ENERGY");
 	LIGHT_CUTOFF_float = glGetUniformLocation(program, "LIGHT_CUTOFF");
+	t = glGetUniformLocation(program, "t");
 
 
 	GLuint TEX_sampler2D = glGetUniformLocation(program, "TEX");

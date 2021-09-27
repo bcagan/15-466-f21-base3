@@ -15,6 +15,7 @@
 #include <string>
 
 #define AVOID_RECOLLIDE_OFFSET 0.05f
+#define DEATH_LAYER -10.0f
 
 GLuint hexapod_meshes_for_lit_color_texture_program = 0;
 Load< MeshBuffer > hexapod_meshes(LoadTagDefault, []() -> MeshBuffer const * {
@@ -42,11 +43,12 @@ Load< Scene > hexapod_scene(LoadTagDefault, []() -> Scene const * {
 	});
 });
 
-Load< Sound::Sample > dusty_floor_sample(LoadTagDefault, []() -> Sound::Sample const * {
-	return new Sound::Sample(data_path("dusty-floor.opus"));
+Load< Sound::Sample > mainMusic(LoadTagDefault, []() -> Sound::Sample const * {
+	return new Sound::Sample(data_path("A-Stellar-Jaunt.wav"));
 });
 
 PlayMode::PlayMode() : scene(*hexapod_scene) {
+	beatT = 0.0f;
 	auto getBBox = [this](Scene scene, std::string name) {
 		BBoxStruct newBBox;
 		newBBox.min = glm::vec3(0.0f);
@@ -63,23 +65,41 @@ PlayMode::PlayMode() : scene(*hexapod_scene) {
 	for (size_t c = 0; c < numPlatforms; c++) {
 		platformArray[c] = nullptr;
 	}
+	for (size_t c = 0; c < numGems; c++) {
+		gemArray[c] = nullptr;
+	}
 	for (auto &transform : scene.transforms) {
 		std::string transformStr = std::string(transform.name);
 		size_t whichPlat = 0;
-		if (transformStr.size() > 7 && transformStr.substr(0, 7).c_str() == "Platform") {
-			for (size_t ind = transformStr.size() - 1; ind >= 7; ind--) {
-				whichPlat += (size_t)((uint8_t)transformStr.at(8) - 30) * (size_t)pow(10, (transformStr.size() - 1) - ind);
+		size_t whichGem = 0;
+		if (transformStr.size() > 8 && transformStr.substr(0, 8) == std::string("Platform")) {
+			for (size_t ind = transformStr.size() - 1; ind >= 8; ind--) {
+				whichPlat += (size_t)((uint8_t)transformStr.at(ind) - 48) * (size_t)pow(10, (transformStr.size() - 1) - ind);
 			}
 			platformArray[whichPlat] = &transform;
-			player->bbox = getBBox(scene, std::string(transform.name));
+			BBoxStruct useBBox = getBBox(scene, std::string(transform.name));
+			(platformArray[whichPlat])->bbox = useBBox;
 		}
-		if (transform.name == "Player") {
+		if (transformStr.size() > 3 && transformStr.substr(0, 3) == std::string("Gem")) {
+			for (size_t ind = transformStr.size() - 1; ind >= 3; ind--) {
+				whichGem += (size_t)((uint8_t)transformStr.at(ind) - 48) * (size_t)pow(10, (transformStr.size() - 1) - ind);
+			}
+			gemArray[whichGem] = &transform;
+			BBoxStruct useBBox = getBBox(scene, std::string(transform.name));
+			(gemArray[whichGem])->bbox = useBBox;
+		}
+		else if (transform.name == "Player") {
 			player = &transform;
 			player->bbox = getBBox(scene, std::string("Player"));
+			playerOrigin = *player;
+		}
+		else if (transform.name == "Goal") {
+			goal = &transform;
+			goal->bbox = getBBox(scene, std::string("Goal"));
 		}
 	}
 	for (size_t c = 0; c < numPlatforms; c++) {
-		std::string errorStr = std::string("Platform").append(std::to_string(c + 30)).append(std::string(" not found."));
+		std::string errorStr = std::string("Platform").append(std::to_string(c)).append(std::string(" not found."));
 		if (platformArray[c] == nullptr) throw std::runtime_error(errorStr.c_str());
 	}
 	if (player == nullptr) throw std::runtime_error("Platform not found.");
@@ -90,7 +110,7 @@ PlayMode::PlayMode() : scene(*hexapod_scene) {
 
 	//start music loop playing:
 	// (note: position will be over-ridden in update())
-	bg_loop = Sound::loop_3D(*dusty_floor_sample, 1.0f, get_player_position(), 10.0f);
+	bg_loop = Sound::loop_3D(*mainMusic, 1.0f, get_player_position(), 10.0f);
 }
 
 PlayMode::~PlayMode() {
@@ -125,35 +145,51 @@ bool PlayMode::bboxIntersect(BBoxStruct object, BBoxStruct stationary) {
 	return xBool && yBool && zBool;
 }
 
-Collision PlayMode::bboxCollide(BBoxStruct object, BBoxStruct stationary) {
+Collision PlayMode::bboxCollide(Scene::Transform *object, Scene::Transform *stationary) {
 	auto distToSurf = [this](glm::vec3 point, glm::vec3 sideCenter) {
-		return (sideCenter - point).length();
+		return glm::length(sideCenter - point);
 	};
 	Collision retCol;
 	retCol.sideCenter = glm::vec3(0.0f);
-	retCol.collides = true;// bboxIntersect(object, stationary);
-	glm::vec3 objCenter = object.min + (object.max - object.min) / 2.f;
-	/*if (retCol.collides) {
+
+	//Creating bbox strucuts
+	BBoxStruct objectStruct; BBoxStruct stationaryStruct;
+	glm::vec3 omin = object->bbox.min; glm::vec3 omax = object->bbox.min;
+	glm::vec3 smin = stationary->bbox.min; glm::vec3 smax = stationary->bbox.min;
+	objectStruct.min = object->make_local_to_world() * glm::vec4(omin.x,omin.y,omin.z, 1.0f);
+	objectStruct.max = object->make_local_to_world() * glm::vec4(omax.x,omax.y,omax.z, 1.0f);
+	stationaryStruct.min = stationary->make_local_to_world() * glm::vec4(stationary->bbox.min, 1.0f);
+	stationaryStruct.max = stationary->make_local_to_world() * glm::vec4(stationary->bbox.max, 1.0f);
+
+	retCol.collides =  bboxIntersect(objectStruct, stationaryStruct);
+	glm::vec3 objCenter =object->make_local_to_world() *
+		glm::vec4(object->bbox.min + (object->bbox.max - object->bbox.min) / 2.f, 1.0f);
+	if (retCol.collides) {
 		float minDist = INFINITY;
-		glm::vec3 statCenter = stationary.min + (stationary.max - stationary.min) / 2;
-		float statX = stationary.max.x - statCenter.x;
-		float statY = stationary.max.y - statCenter.y;
-		float statZ = stationary.max.z - statCenter.z;
-		glm::vec3 sides[6] = {statCenter + glm::vec(statX,0.0f,0.0f).statCenter - glm::vec(statX,0.0f,0.0f) 
-		statCenter + glm::vec(0.0f,statY,0.0f) ,statCenter + glm::vec(0.0f,statY,0.0f)
-		statCenter + glm::vec(0.0f,0.0f,statZ) ,statCenter + glm::vec(0.0f,0.0f,statZ) }; //TO DO
-		for (auto whichSide : sides) {
+		glm::vec3 statCenter = stationary->bbox.min + stationary->make_local_to_world() *
+			glm::vec4((stationary->bbox.max - stationary->bbox.min) / 2.f, 1.0f);
+		float statX = stationary->scale.x*(stationary->bbox.max.x - stationary->bbox.min.x)/2.f;
+		float statY = stationary->scale.y * (stationary->bbox.max.y - stationary->bbox.min.y) / 2.f;
+		float statZ = stationary->scale.z * (stationary->bbox.max.z - stationary->bbox.min.z) / 2.f;
+		glm::vec3 sides[6];
+		sides[0] = statCenter + glm::vec3(statX, 0.0f, 0.0f);
+		sides[1] = statCenter - glm::vec3(statX, 0.0f, 0.0f);
+		sides[2] = statCenter + glm::vec3(0.0f, statY, 0.0f);
+		sides[3] = statCenter - glm::vec3(0.0f, statY, 0.0f);
+		sides[4] = statCenter + glm::vec3(0.0f, 0.0f, statZ);
+		sides[5] = statCenter - glm::vec3(0.0f, 0.0f, statZ);
+		for (size_t sideInd = 0; sideInd < 6; sideInd++) {
+			glm::vec3 whichSide = sides[sideInd];
 			float sideDist = distToSurf(objCenter, whichSide);
 			if (sideDist < minDist) {
 				minDist = sideDist;
 				retCol.sideCenter = whichSide;
 			}
 		}
-	}*/
-	glm::vec3 statCenter = stationary.min + (stationary.max - stationary.min) / 2.f;
-	float statZ = stationary.max.z - statCenter.z;
-	retCol.sideCenter = statCenter + glm::vec3(0.0, 0.0, statZ);
-	if (objCenter.z > statCenter.z + 0.00005f) retCol.collides = false;
+
+		glm::vec3 retAxis = glm::normalize(retCol.sideCenter - statCenter);
+		retCol.sideCenter = retAxis;
+	}
 	return retCol;
 }
 
@@ -181,6 +217,11 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 			down.pressed = true;
 			return true;
 		}
+		else if (evt.key.keysym.sym == SDLK_r) {
+			r.downs += 1;
+			r.pressed = true;
+			return true;
+		}
 		else if (evt.key.keysym.sym == SDLK_SPACE) {
 			space.downs += 1;
 			space.pressed = true;
@@ -199,6 +240,10 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 		}
 		else if (evt.key.keysym.sym == SDLK_s) {
 			down.pressed = false;
+			return true;
+		}
+		else if (evt.key.keysym.sym == SDLK_r) {
+			r.pressed = false;
 			return true;
 		}
 		else if (evt.key.keysym.sym == SDLK_SPACE) {
@@ -228,97 +273,195 @@ bool PlayMode::handle_event(SDL_Event const &evt, glm::uvec2 const &window_size)
 	return false;
 }
 
-void PlayMode::songUpdate() {
+void PlayMode::songUpdate() { //Update to see if the player can jump, and if the blocks should flash
+	//Song is 3 blocks of 4, each 8 measures with a beat on the odd measures. So 8*4*3 = 96 measures
 	size_t t = bg_loop->i;
 	size_t maxT = bg_loop->data.size();
-	float currentTime = ((float) t) / ((float) maxT);
-	canJump = true;
-	std::cout << "current t fract = " << currentTime << std::endl;
+	float currentTime = ((float) t) / ((float) maxT); //Get fractional time stamp
+
+	currentTime *= 96.f;
+	int currentInt = (int)currentTime;
+	if (currentInt % 2 == 0) canJump = true;
+	else canJump = false; //Every other measure can jump
+
+	float inT = currentTime - (float) currentInt;
+	if (inT < 0.0f) inT = 0.0f;
+	else if (inT > 1.0f) inT = 0.0f;
+	if (currentInt % 2 == 1) {
+		if (inT <= 0.333) {
+			inT *= 3.0f;
+			inT = 1.0f - inT;
+		}
+		else inT = 0.0f;
+	}
+	beatT = inT; //Gets percentage time of current measure in [0.0,1.0] for flashing blocks light blue with beat
+	//For first 1/3 of following measure, interpolate back to texture
+}
+
+void PlayMode::resetGame() {
+	*player = playerOrigin;
+
+	//Reset gameplay vars
+	curPressTime = 0.0f;
+	curV0 = glm::vec3(0.0f); //Derived from above, used for velocity from jump, not object velocity
+	curVelocity = glm::vec3(0.0f); //Current velocity, used for motion
+	grounded = true;
+	curJumpTime = 0.0f;//Similar to press variables but for total time in air
+	canJump = false; //controlled by beat
+	jumpLock = false; //Avoids double jumps
+	walled = false; //If colliding with a wall;
+	timer = 0.f;
+	winBool = false;
+	score = 0;
+	for (size_t c = 0; c < numGems; c++) {
+		gemArray[c]->doDraw = true;
+	}
+
 }
 
 void PlayMode::update(float elapsed) {
 
+	auto winCheck = [this]() {
+		//Creating bbox strucuts
+		BBoxStruct playerStruct; BBoxStruct goalStruct;
+		glm::vec3 pmin = player->bbox.min; glm::vec3 pmax = player->bbox.min;
+		glm::vec3 gmin = goal->bbox.min; glm::vec3 gmax = goal->bbox.min;
+		playerStruct.min = player->make_local_to_world() * glm::vec4(player->bbox.min, 1.0f);
+		playerStruct.max = player->make_local_to_world() * glm::vec4(player->bbox.max, 1.0f);
+		goalStruct.min = goal->make_local_to_world() * glm::vec4(goal->bbox.min, 1.0f);
+		goalStruct.max = goal->make_local_to_world() * glm::vec4(goal->bbox.max, 1.0f);
+		return bboxIntersect(playerStruct, goalStruct);
+	};
+
+	if(!winBool) timer += elapsed;
+	if (timer >= endTime) resetGame();
+
 	songUpdate();
 
-	if (!grounded && curPressTime >= maxPressTime) { //In air
-		float oldJumpTime = curJumpTime;
-		glm::vec3 oldJump = (glm::vec3(0.0f, 0.0f, gAcc)) / glm::vec3(2.f * (float)pow(oldJumpTime, 2)) + (curV0)*glm::vec3(oldJumpTime);
-		curJumpTime += (elapsed - lastJump);
-		glm::vec3 totalJump = glm::vec3(0.0f, 0.0f, gAcc / 2.f) * glm::vec3((float)pow(curJumpTime, 2)) + glm::vec3(curJumpTime) * curV0;
-		glm::vec3 jumpDelta = totalJump - oldJump;
-		player->position += jumpDelta;
-
-	}
-	else if (space.pressed && curPressTime < maxPressTime) {//Jump if possible
-		if (!grounded || canJump) {
-			grounded = false;
-			float delta = elapsed - pressLast;
-			pressLast = elapsed;
-			curPressTime += delta;
-			if (curPressTime > maxPressTime) curPressTime = maxPressTime;
-			float oldJumpTime = curJumpTime;
-			glm::vec3 oldJump = glm::vec3(0.0f, 0.0f, gAcc / 2.f) * glm::vec3((float)pow(oldJumpTime, 2)) + glm::vec3(oldJumpTime)* curV0;
-			curV0.z = curPressTime * jumpFactor;
-			curJumpTime += (elapsed - lastJump);
-			glm::vec3 totalJump =  glm::vec3(0.0f, 0.0f, gAcc /2.f) * glm::vec3((float)pow(curJumpTime, 2)) + glm::vec3(curJumpTime) * curV0;
-			glm::vec3 jumpDelta = totalJump - oldJump;
-			player->position += jumpDelta;
+	auto aboveCollision = [this]() {
+		bool above = false;
+		BBoxStruct newPlayer;
+		newPlayer.min = player->make_local_to_world() * glm::vec4(player->bbox.min, 1.0);
+		newPlayer.max = player->make_local_to_world() * glm::vec4(player->bbox.max, 1.0);
+		for (size_t whichPlatform = 0; whichPlatform < numPlatforms; whichPlatform++) {
+			Scene::Transform* whichTransform = platformArray[whichPlatform];
+			BBoxStruct newPlatform;
+			newPlatform.min = whichTransform->make_local_to_world() * glm::vec4(whichTransform->bbox.min, 1.0);
+			newPlatform.max = whichTransform->make_local_to_world() * glm::vec4(whichTransform->bbox.max, 1.0);
+			if (newPlayer.min.x >= newPlatform.min.x && newPlayer.max.x < newPlatform.max.x
+				&& newPlayer.min.y >= newPlatform.min.y && newPlayer.max.y < newPlatform.max.y) above = true;
 		}
-	}
-	else{//Move player if not jump
+		return above;
+	};
 
-		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
-		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
-		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
-		if (!down.pressed && up.pressed) move.y = 1.0f;
 
-		//make it so that moving diagonally doesn't go faster:
-		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
-		player->position += glm::vec3(move.x, move.y, 0.0f);
-		curV0 = glm::vec3(move.x, move.y, 0.0f);
-	}
-
-	//Collision check is last
-
+	//Collision check
 	for (size_t whichPlatform = 0; whichPlatform < numPlatforms; whichPlatform++) {
 		Scene::Transform* whichTransform = platformArray[whichPlatform];
-		Collision collideRes = bboxCollide(player->bbox, whichTransform->bbox);
+		Collision collideRes = bboxCollide(player, whichTransform);
 		if (collideRes.collides) {
-			if (collideRes.sideCenter.z >= whichTransform->bbox.max.z - 0.000005f) {
-				//std::cout << "on top of " << whichTransform->name << "\n";
+			//Get offset
+			glm::vec3 absAxis = glm::vec3(abs(collideRes.sideCenter.x), abs(collideRes.sideCenter.y), abs(collideRes.sideCenter.z));
+			glm::vec3 axisDif = whichTransform->scale * collideRes.sideCenter * (whichTransform->bbox.max - whichTransform->bbox.min) / glm::vec3(2.f);
+			glm::vec3 offset = whichTransform->make_local_to_world()*glm::vec4(axisDif,1.0f);
+			offset = absAxis * offset;
+			glm::vec3 playerDif = collideRes.sideCenter * player->scale *(
+				(player->bbox.max - player->bbox.min) / glm::vec3(2.f) );
+
+			player->position *= (glm::vec3(1.0f) -absAxis);
+			player->position += offset + playerDif;
+
+			if (collideRes.sideCenter.z > 0.0f) {
 				grounded = true;
-				player->position.z = whichTransform->bbox.max.z + (player->bbox.max.z - player->bbox.min.z) / 2 + AVOID_RECOLLIDE_OFFSET;
+				jumpLock = false;
+				curJumpTime = 0.0f;
+				curPressTime = 0.0f;
+				walled = false;
+				jumped = false;
+			}
+			else {
+				walled = true;
 			}
 		}
 	}
-	/*
-	//move camera:
-	{
+	if (!aboveCollision()) { //Checks to see if not above a surface, if so, know not grounded
+		walled = false;
+		grounded = false;
+	}
 
+	//Gem collection check
+	for (size_t whichGem = 0; whichGem < numGems; whichGem++) {
+		Scene::Transform* whichTransform = gemArray[whichGem];
+		Collision collideRes = bboxCollide(player, whichTransform);
+		if (collideRes.collides && whichTransform->doDraw) {
+			gemArray[whichGem]->doDraw = false;
+			score += 200;
+		}
+	}
+
+	//Death check
+	if (player->position.z <= DEATH_LAYER) {
+		resetGame();
+	}
+
+	//Win check
+	if (winCheck()) {
+		if(!winBool) score += (size_t)(endTime - timer) * 10;
+		winBool = true;
+	}
+	if (r.pressed && winBool) resetGame();
+
+	if (!winBool) {
 		//combine inputs into a move:
-		constexpr float PlayerSpeed = 30.0f;
 		glm::vec2 move = glm::vec2(0.0f);
-		if (left.pressed && !right.pressed) move.x =-1.0f;
+		if (left.pressed && !right.pressed) move.x = -1.0f;
 		if (!left.pressed && right.pressed) move.x = 1.0f;
-		if (down.pressed && !up.pressed) move.y =-1.0f;
+		if (down.pressed && !up.pressed) move.y = -1.0f;
 		if (!down.pressed && up.pressed) move.y = 1.0f;
-
+		constexpr float PlayerSpeed = 5.0f;
 		//make it so that moving diagonally doesn't go faster:
 		if (move != glm::vec2(0.0f)) move = glm::normalize(move) * PlayerSpeed * elapsed;
+		if (!grounded && (!space.pressed || curPressTime >= maxPressTime) && !jumpLock && jumped) jumpLock = true;
+		if (!jumpLock && space.pressed && curPressTime < maxPressTime) {//Jump if possible
+			if (!grounded || canJump) {
+				jumped = true;
+				grounded = false;
+				curPressTime += elapsed;
+				if (curPressTime > maxPressTime) curPressTime = maxPressTime;
+				float oldJumpTime = curJumpTime;
+				glm::vec3 oldJump = glm::vec3(0.0f, 0.0f, -gAcc / 2.f) * glm::vec3((float)pow(oldJumpTime, 2)) + glm::vec3(oldJumpTime) * curV0;
+				curV0.z = curPressTime * jumpFactor;
+				curJumpTime += elapsed;
+				glm::vec3 totalJump = glm::vec3(0.0f, 0.0f, -gAcc / 2.f) * glm::vec3((float)pow(curJumpTime, 2)) + glm::vec3(curJumpTime) * curV0;
+				glm::vec3 jumpDelta = totalJump - oldJump;
+				player->position += jumpDelta;
+				if (!walled) player->position += glm::vec3(move.x, move.y, 0.0f);
+			}
+		}
+		else  if (!grounded && jumpLock) { //In air
+			float oldJumpTime = curJumpTime;
+			glm::vec3 oldJump = (glm::vec3(0.0f, 0.0f, -gAcc / 2.f)) * glm::vec3((float)pow(oldJumpTime, 2)) + (curV0)*glm::vec3(oldJumpTime);
+			curJumpTime += elapsed;
+			glm::vec3 totalJump = glm::vec3(0.0f, 0.0f, -gAcc / 2.f) * glm::vec3((float)pow(curJumpTime, 2)) + glm::vec3(curJumpTime) * curV0;
+			glm::vec3 jumpDelta = totalJump - oldJump;
+			player->position += jumpDelta;
+			if (!walled) player->position += glm::vec3(move.x, move.y, 0.0f);
+		}
+		else if (!grounded) {//falling
+			float oldJumpTime = curJumpTime;
+			glm::vec3 oldJump = (glm::vec3(0.0f, 0.0f, -gAcc / 2.f)) * glm::vec3((float)pow(oldJumpTime, 2));
+			curJumpTime += elapsed;
+			glm::vec3 totalJump = glm::vec3(0.0f, 0.0f, -gAcc / 2.f) * glm::vec3((float)pow(curJumpTime, 2));
+			glm::vec3 jumpDelta = totalJump - oldJump;
+			player->position += jumpDelta;
+			if (!walled) player->position += glm::vec3(move.x, move.y, 0.0f);
 
-		/*
-		glm::mat4x3 frame = camera->transform->make_local_to_parent();
-		glm::vec3 right = frame[0];
-		//glm::vec3 up = frame[1];
-		glm::vec3 forward = -frame[2];
-
-		camera->transform->position += move.x * right + move.y * forward;
-		player->position += glm::vec3(move.x, move.y, 0.0f);
-
-	}*/
+		}
+		else {//Move player if not jump
+			player->position += glm::vec3(move.x, move.y, 0.0f);
+		}
+		camera->transform->position = player->position + glm::vec3(0.0, -15.0f, 3.0f);
+	}
 
 
 	{ //update listener to camera position:
@@ -326,6 +469,10 @@ void PlayMode::update(float elapsed) {
 		glm::vec3 right = frame[0];
 		glm::vec3 at = frame[3];
 		Sound::listener.set_position_right(at, right, 1.0f / 60.0f);
+	}
+
+	{//update music position
+		bg_loop->set_position(get_player_position(),bg_loop->pan.ramp);
 	}
 
 	//reset button press counters:
@@ -340,11 +487,11 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 	camera->aspect = float(drawable_size.x) / float(drawable_size.y);
 
 	//set up light type and position for lit_color_texture_program:
-	// TODO: consider using the Light(s) in the scene to do this
 	glUseProgram(lit_color_texture_program->program);
 	glUniform1i(lit_color_texture_program->LIGHT_TYPE_int, 1);
 	glUniform3fv(lit_color_texture_program->LIGHT_DIRECTION_vec3, 1, glm::value_ptr(glm::vec3(0.0f, 0.0f,-1.0f)));
 	glUniform3fv(lit_color_texture_program->LIGHT_ENERGY_vec3, 1, glm::value_ptr(glm::vec3(1.0f, 1.0f, 0.95f)));
+	scene.t = beatT;
 	glUseProgram(0);
 
 	glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
@@ -366,13 +513,19 @@ void PlayMode::draw(glm::uvec2 const &drawable_size) {
 			0.0f, 0.0f, 0.0f, 1.0f
 		));
 
-		constexpr float H = 0.09f;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		constexpr float H = 0.09f; 
+		std::string timerStr = (std::string("; Time left: ")).append(std::to_string(int(endTime - timer)));
+		std::string scoreStr = (std::string("; Score: ")).append(std::to_string(score + 10*(int)(endTime - timer)));
+		std::string useStr = (std::string("Mouse motion rotates camera; WASD moves; escape ungrabs mouse")).append(timerStr).append(scoreStr);
+		if (winBool) {
+			useStr = (std::string("You won! You got: ")).append(std::to_string(score)).append(std::string(" points! Press R to replay!"));
+		}
+		lines.draw_text(useStr.c_str(),
 			glm::vec3(-aspect + 0.1f * H, -1.0 + 0.1f * H, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0x00, 0x00, 0x00, 0x00));
 		float ofs = 2.0f / drawable_size.y;
-		lines.draw_text("Mouse motion rotates camera; WASD moves; escape ungrabs mouse",
+		lines.draw_text(useStr.c_str(),
 			glm::vec3(-aspect + 0.1f * H + ofs, -1.0 + + 0.1f * H + ofs, 0.0),
 			glm::vec3(H, 0.0f, 0.0f), glm::vec3(0.0f, H, 0.0f),
 			glm::u8vec4(0xff, 0xff, 0xff, 0x00));

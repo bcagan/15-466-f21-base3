@@ -28,31 +28,44 @@ struct PlayMode : Mode {
 	struct Button {
 		uint8_t downs = 0;
 		uint8_t pressed = 0;
-	} left, right, down, up, space;
+	} left, right, down, up, space,r;
 
 	//local copy of the game scene (so code can change it during gameplay):
 	Scene scene;
 
-	//Player and platforms
-	size_t numPlatforms = 13;
-	Scene::Transform *platformArray[13];
-	glm::quat platform_rotationArray[13];
+	//Player, goal, and platforms
+	size_t numPlatforms = 26;
+	Scene::Transform *platformArray[26];
+	glm::quat platform_rotationArray[26];
 	Scene::Transform *player = nullptr;
 	glm::quat player_rotation;
+	Scene::Transform playerOrigin;
+	Scene::Transform* goal = nullptr;
+	glm::quat goal_rotation;
+	size_t numGems = 3;
+	Scene::Transform* gemArray[3];
+	glm::quat gem_rotationArray[3];
 	float wobble = 0.0f;
 
 	//Gameplay
-	float maxPressTime = 0.5f; //Maximal # of seconds that jump press can increase
+	float maxPressTime = 0.125f; //Maximal # of seconds that jump press can increase
 	float curPressTime = 0.0f;
 	glm::vec3 curV0 = glm::vec3(0.0f); //Derived from above, used for velocity from jump, not object velocity
 	glm::vec3 curVelocity = glm::vec3(0.0f); //Current velocity, used for motion
 	float gAcc = 9.81f; //9.81 m/s^2
 	bool grounded = true;
-	float jumpFactor = 1.0f;//How much 1 second of jump adds to velocity (holding space)
-	float pressLast = 0.0f; //When jump last pressed;
-	float curJumpTime = 0.0f;
-	float lastJump = 0.0f; //Similar to press variables but for total time in air
+	float jumpFactor = 40.0f;//How much 1 second of jump adds to velocity (holding space)
+	float curJumpTime = 0.0f;//Similar to press variables but for total time in air
 	bool canJump = false; //controlled by beat
+	bool jumpLock = false; //Avoids double jumps
+	bool walled = false; //If colliding with a wall;
+	float timer = 0;
+	float endTime = 60.f;
+	bool winBool = false;
+	bool jumped = false; //Has a jump occured
+	size_t score = 0;
+
+	void resetGame();
 
 	void songUpdate();
 
@@ -66,6 +79,9 @@ struct PlayMode : Mode {
 
 	//Meshes:
 	bool bboxIntersect(BBoxStruct object, BBoxStruct stationary); //Intersect bboxes and return true if collision
-	Collision bboxCollide(BBoxStruct object, BBoxStruct stationary);
+	Collision bboxCollide(Scene::Transform* object, Scene::Transform* stationary);
+
+	//Shader
+	float beatT = 0.0f;
 
 };

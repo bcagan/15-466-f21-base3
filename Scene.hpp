@@ -28,6 +28,7 @@ struct BBoxStruct {
 };
 
 struct Scene {
+	float t = 0.0f; //T for fade between block values
 	struct Transform {
 		//Transform names are useful for debugging and looking up locations in a loaded scene:
 		std::string name;
@@ -54,6 +55,7 @@ struct Scene {
 		Transform() = default;
 
 		BBoxStruct bbox;
+		bool doDraw = true;
 	};
 
 	struct Drawable {

@@ -28,6 +28,7 @@ ColorTextureProgram::ColorTextureProgram() {
 		"in vec4 color;\n"
 		"in vec2 texCoord;\n"
 		"out vec4 fragColor;\n"
+		"uniform float t;\n"
 		"void main() {\n"
 		"	fragColor = texture(TEX, texCoord) * color;\n"
 		"}\n"
