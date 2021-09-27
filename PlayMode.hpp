@@ -48,22 +48,24 @@ struct PlayMode : Mode {
 	float wobble = 0.0f;
 
 	//Gameplay
-	float maxPressTime = 0.125f; //Maximal # of seconds that jump press can increase
+	float maxPressTime = 0.13f; //Maximal # of seconds that jump press can increase
 	float curPressTime = 0.0f;
 	glm::vec3 curV0 = glm::vec3(0.0f); //Derived from above, used for velocity from jump, not object velocity
 	glm::vec3 curVelocity = glm::vec3(0.0f); //Current velocity, used for motion
 	float gAcc = 9.81f; //9.81 m/s^2
 	bool grounded = true;
-	float jumpFactor = 40.0f;//How much 1 second of jump adds to velocity (holding space)
+	float jumpFactor = 45.0f;//How much 1 second of jump adds to velocity (holding space)
 	float curJumpTime = 0.0f;//Similar to press variables but for total time in air
 	bool canJump = false; //controlled by beat
 	bool jumpLock = false; //Avoids double jumps
 	bool walled = false; //If colliding with a wall;
 	float timer = 0;
-	float endTime = 60.f;
+	float endTime = 80.f;
 	bool winBool = false;
 	bool jumped = false; //Has a jump occured
 	size_t score = 0;
+
+	bool badSpace = false;// Player tries to jump during off-beat
 
 	void resetGame();
 
