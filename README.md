@@ -1,6 +1,6 @@
-# (TODO: your game's title)
+# A Stellar Jaunt
 
-Author: (TODO: your name)
+Author: Ben Cagan (bcagan)
 
 Design: (TODO: In two sentences or fewer, describe what is new and interesting about your game.)
 
@@ -12,7 +12,7 @@ How To Play:
 
 (TODO: describe the controls and (if needed) goals/strategy.)
 
-Sources: (TODO: list a source URL for any assets you did not create yourself. Make sure you have a license for the asset.)
+Sources: Music was made using https://www.beepbox.co/
 
 This game was built with [NEST](NEST.md).
 
