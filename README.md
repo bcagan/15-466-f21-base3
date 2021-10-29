@@ -2,7 +2,7 @@
 
 Author: Ben Cagan (bcagan)
 
-Design: A short platformer, where you, as a plainly textured star. aim to get to the goal as quickly
+Design: A short platformer, where you, as a plainly textured star, aim to get to the goal as quickly
 as possible with the highest possible score (which can be increased by collecting gems). However, if
 you don't jump to the rhythm, you won't get very far, you can only jump during a beat.
 
